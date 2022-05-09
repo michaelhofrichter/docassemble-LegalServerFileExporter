@@ -1,0 +1,108 @@
+modules:
+  - .LSAPIs
+---
+objects: 
+  - file_list: DAFileList.using(auto_gather=False, gathered=True)
+---
+code: | 
+  files_lis = get_file_list_from_legalserver(ls_site_abbreviation, case_uuid)
+  for item in files_lis:
+    file_list.append(get_file_from_legalserver(ls_site_abbreviation, item.get('guid'), item.get('name')))
+  zip_file_name = case_number + "_documents.zip"
+  collect_documents = True
+---
+question: Test
+subquestion: | 
+  ${ matter_details } 
+event: test_details
+---
+code: | 
+  collect_documents
+  file_list.gathered = True
+---
+question: | 
+  Final Documents
+subquestion: | 
+  ${ case_zip } 
+event: final_documents
+---
+code: | 
+  for file in file_list:
+    file.retrieve()
+  case_zip = zip_file(file_list, filename=zip_file_name)
+---
+id: LegalServer Site
+question: |
+  What is the LegalServer Site?
+subquestion: |
+  This should include the `-demo` portion of the URL, but not the `.legalserver.org` portion.
+fields: 
+  - no label: ls_site_abbreviation
+---
+id: Case Number
+question: | 
+  What is the case number?
+fields: 
+  - Case Number: case_number
+    required: False
+  - Case UUID: case_uuid
+    required: False
+continue field button: gather_case    
+validation code: | 
+  if case_number == "" and case_uuid == "":
+    validation_error('You Need either the Case Number or the Case UUID to download all the files of that case.')
+---  
+id: Document Table
+question: | 
+  ${ case_number } Documents
+subquestion: |
+  ${ file_list.table } 
+  
+  % for item in file_list:
+  ${ item.url_for() }
+  % endfor
+continue button field: confirm_documents
+---
+table: file_list.table
+rows: file_list
+columns: 
+  - Name: | 
+      row_item.filename
+  - Extension: | 
+      row_item.extension
+delete buttons: True
+---
+code: | 
+  if case_uuid == "":
+    matter_details = search_matter_details(ls_site_abbreviation, 'full', 0, case_number)
+    if len(matter_details) > 1:
+      err_text = "Too Many Cases were found"
+      err_response
+    elif len(matter_details) == 0:
+      err_text = "No Case was found"
+      err_response
+    # test_details
+    for item in matter_details:
+      case_uuid = item['matter_uuid']
+  get_case_uuid = True
+---
+question: | 
+  Error Getting Case
+subquestion: | 
+  ${ err_text } 
+  
+  % if err_text == "Too Many Cases were found":
+    % for item in matter_details['data']:
+  * ${ item['case_number'] } - ${ item['client_full_name'] } 
+    % endfor
+  % endif
+event: err_response
+id: error response
+---
+mandatory: True
+code: | 
+  ls_site_abbreviation
+  get_case_uuid
+  collect_documents
+  confirm_documents
+  final_documents
